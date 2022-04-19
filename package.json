@@ -61,8 +61,6 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.2",
-    "@types/crypto-js": "^4.1.1",
-    "node-polyfill-webpack-plugin": "^1.1.4",
-    "react-scripts-rewrite": "^0.1.11"
+    "@types/crypto-js": "^4.1.1"
   }
 }
