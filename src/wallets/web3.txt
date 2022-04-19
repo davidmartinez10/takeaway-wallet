@@ -1,0 +1,71 @@
+import * as bip39 from "bip39";
+import { bufferToHex, publicToAddress } from "ethereumjs-util";
+import { intToHex } from "ethereumjs-util";
+import Transaction from "@ethereumjs/tx";
+import Web3 from "web3";
+import { BigFloat, set_precision } from "bigfloat.js";
+import { Signature, TransactionOptions, WalletObject } from "../types";
+import { Web3WalletConfig } from "../state/wallets";
+import { bip32 } from "../utils";
+
+export function web3(mnemonic: string, options: Web3WalletConfig) {
+  const { derivation_path, host, chainId } = options;
+  const seed = bip39.mnemonicToSeedSync(mnemonic);
+  const derived_key = bip32.fromSeed(seed).derivePath(derivation_path);
+  const { publicKey, privateKey } = derived_key;
+  const address = bufferToHex(publicToAddress(publicKey, true));
+  const web3 = new Web3(new Web3.providers.HttpProvider(host));
+
+  async function getBalance() {
+    const rawBalance = new BigFloat(await web3.eth.getBalance(address));
+    set_precision(-18);
+    return rawBalance.div(1e18);
+  }
+
+  async function sendTransaction(options: TransactionOptions) {
+    const { nonce, gasPrice, gasLimit, value, to } = options;
+    const txParams = {
+      nonce: intToHex(
+        Number(nonce ?? (await web3.eth.getTransactionCount(address)))
+      ),
+      gasPrice: intToHex(Number(gasPrice ?? (await web3.eth.getGasPrice()))),
+      gasLimit: intToHex(Number(gasLimit ?? 21000)),
+      to,
+      value: intToHex(Number(web3.utils.toWei(value, "ether"))),
+      chainId,
+    };
+    // @ts-ignore
+    const tx = new Transaction(txParams);
+    tx.sign(privateKey!);
+    const serializedTx = `0x${tx.serialize().toString("hex")}`;
+    const transaction = await web3.eth.sendSignedTransaction(serializedTx);
+    return transaction.transactionHash;
+  }
+
+  async function getFee() {
+    const fee = await web3.eth.getGasPrice();
+    return new BigFloat(fee).div("1000000000");
+  }
+
+  async function signMessage(message: string) {
+    return {
+      address,
+      msg: message,
+      sig: await web3.eth.sign(message, address),
+      signer: "CBET",
+    } as Signature;
+  }
+
+  function verifySignature(signature: Signature) {
+    return false;
+  }
+
+  return {
+    address,
+    getBalance,
+    sendTransaction,
+    getFee,
+    signMessage,
+    verifySignature,
+  } as WalletObject;
+}
